@@ -1173,105 +1173,33 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # Главная функция
 def main():
-    """Главная функция запуска бота"""
     print("🚀 Запуск ULX Ukraine Bot...")
     print(f"📊 Загружено {len(REGIONS)} областей")
-    print(f"🏙️ Загружено {sum(len(cities) for cities in REGIONS.values())} городов")
+    print(f"🏙️ Загружено {sum(len(c) for c in REGIONS.values())} городов")
     print(f"🏷️ Загружено {len(CATEGORIES)} категорий")
     print(f"🔧 Загружено {len(CONDITIONS)} состояний товаров")
-    
-    # Создаем приложение
-    application = ApplicationBuilder().token(TOKEN).build()
-    
-    # Conversation Handler для создания объявлений
-    conv_handler = ConversationHandler(
-        entry_points=[
-            CallbackQueryHandler(start_selling, pattern="^start_sell$")
-        ],
-        states={
-            CHOOSING_CATEGORY: [
-                CallbackQueryHandler(choose_category, pattern=r"^category\|.+$")
-            ],
-            CHOOSING_SUBCATEGORY: [
-                CallbackQueryHandler(choose_subcategory, pattern=r"^subcategory\|.+$"),
-                CallbackQueryHandler(manual_subcategory, pattern="^manual_subcategory$")
-            ],
-            ADDING_MANUAL_SUBCATEGORY: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, add_manual_subcategory)
-            ],
-            CHOOSING_REGION: [
-                CallbackQueryHandler(choose_region, pattern=r"^region\|.+$")
-            ],
-            CHOOSING_CITY: [
-                CallbackQueryHandler(choose_city, pattern=r"^city\|.+$")
-            ],
-            ADDING_MANUAL_CITY: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, add_manual_city)
-            ],
-            CHOOSING_CONDITION: [
-                CallbackQueryHandler(choose_condition, pattern=r"^condition\|.+$")
-            ],
-            ADDING_TITLE: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, add_title)
-            ],
-            ADDING_DESCRIPTION: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, add_description)
-            ],
-            ADDING_PRICE: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, add_price)
-            ],
-            ADDING_PHOTOS: [
-                CallbackQueryHandler(add_photos_handler, pattern="^add_photos$"),
-                CallbackQueryHandler(skip_photos_handler, pattern="^skip_photos$"),
-                CallbackQueryHandler(photos_done_handler, pattern="^photos_done$"),
-                CallbackQueryHandler(remove_last_photo_handler, pattern="^remove_last_photo$"),
-                MessageHandler(filters.PHOTO, handle_photos)
-            ],
-            CONFIRMING: [
-                CallbackQueryHandler(confirm, pattern="^confirm$"),
-                CallbackQueryHandler(edit_listing, pattern="^edit$"),
-                CallbackQueryHandler(back_to_preview, pattern="^back_to_preview$")
-            ]
-        },
-        fallbacks=[
-            CallbackQueryHandler(cancel, pattern="^cancel$"),
-            CallbackQueryHandler(back_to_categories, pattern="^back_to_categories$"),
-            CallbackQueryHandler(back_to_subcategories, pattern="^back_to_subcategories$"),
-            CallbackQueryHandler(back_to_regions, pattern="^back_to_regions$"),
-            CallbackQueryHandler(back_to_cities, pattern="^back_to_cities$"),
-            CommandHandler("start", start),
-            CommandHandler("cancel", cancel)
-        ],
-        per_message=False
-    )
-    
-    # Добавляем обработчики
-    application.add_handler(conv_handler)
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("sell", sell_command))
-    application.add_handler(CommandHandler("help", help_command))
-    application.add_handler(CallbackQueryHandler(help_command, pattern="^help$"))
-    application.add_handler(CallbackQueryHandler(main_menu_handler, pattern="^main_menu$"))
-    application.add_handler(CallbackQueryHandler(unknown_callback))
-    
-    # Обработчик ошибок
-    application.add_error_handler(error_handler)
-    
-    # Запускаем бота
-    print("✅ ULX Ukraine Bot запущен!")
-    print(f"📢 Канал для публикации: {CHANNEL_ID}")
-    print("🔄 Бот работает в режиме polling...")
-    
-    try:
-        application.run_polling(
-            allowed_updates=Update.ALL_TYPES,
-            drop_pending_updates=True
-        )
-    except KeyboardInterrupt:
-        print("\n🛑 Бот остановлен пользователем")
-    except Exception as e:
-        print(f"❌ Критическая ошибка: {e}")
-        logger.error(f"Критическая ошибка: {e}")
 
-if __name__ == '__main__':
+    # 1) Создаём приложение
+    app = ApplicationBuilder().token(TOKEN).post_init(on_startup).build()
+
+    # 2) Регистрируем хэндлеры
+    app.add_handler(conv_handler)
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("sell", sell_command))
+    app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(CallbackQueryHandler(help_command,     pattern="^help$"))
+    app.add_handler(CallbackQueryHandler(main_menu_handler,pattern="^main_menu$"))
+    app.add_handler(CallbackQueryHandler(unknown_callback))
+    app.add_error_handler(error_handler)
+
+    # 3) Запускаем webhook-сервер
+    print("🔄 Бот работает в режиме webhook…")
+    app.run_webhook(
+        listen="0.0.0.0",
+        port=int(os.environ.get("PORT", 443)),
+        url_path=TOKEN
+    )
+
+
+if __name__ == "__main__":
     main()
