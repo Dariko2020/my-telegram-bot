@@ -20,7 +20,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Конфигурация
-TOKEN = "8112684210:AAG1-jZuYltIxkON3883PVCptuQYi7OU6jM"
+TOKEN = "8112684210:AAH1eo9dbi5_6SUdbBpLAacBl99aaMoN758"
 CHANNEL_ID = "@ulx_ukraine"
 
 # Ограничения
@@ -330,6 +330,34 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             )
     except TelegramError as e:
         logger.error(f"Ошибка отправки справки: {e}")
+
+# Отмена
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Отмена создания объявления"""
+    query = update.callback_query
+    if query:
+        await query.answer()
+        
+        keyboard = [
+            [InlineKeyboardButton("🚀 Создать объявление", callback_data="start_sell")],
+            [InlineKeyboardButton("ℹ️ Помощь", callback_data="help")]
+        ]
+        
+        await query.edit_message_text(
+            "❌ <b>Создание объявления отменено</b>\n\n"
+            "Все введенные данные удалены.\n"
+            "Вы можете начать заново в любое время.",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode=ParseMode.HTML
+        )
+    else:
+        await update.message.reply_text(
+            "❌ Создание объявления отменено.",
+            parse_mode=ParseMode.HTML
+        )
+    
+    clear_user_data(context)
+    return ConversationHandler.END
 
 # Начало создания объявления
 async def start_selling(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -1046,33 +1074,6 @@ async def back_to_preview(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     
     return await show_confirmation(update, context)
 
-# Отмена
-async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Отмена создания объявления"""
-    query = update.callback_query
-    if query:
-        await query.answer()
-        
-        keyboard = [
-            [InlineKeyboardButton("🚀 Создать объявление", callback_data="start_sell")],
-            [InlineKeyboardButton("ℹ️ Помощь", callback_data="help")]
-        ]
-        
-        await query.edit_message_text(
-            "❌ <b>Создание объявления отменено</b>\n\n"
-            "Все введенные данные удалены.\n"
-            "Вы можете начать заново в любое время.",
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode=ParseMode.HTML
-        )
-    else:
-        await update.message.reply_text(
-            "❌ Создание объявления отменено.",
-            parse_mode=ParseMode.HTML
-        )
-    
-    clear_user_data(context)
-    return ConversationHandler.END
 
 # Обработка неизвестных callback
 async def unknown_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1149,57 +1150,119 @@ async def sell_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # Обработка ошибок
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик ошибок"""
-    logger.error(f"Update {update} caused error {context.error}")
-    
-    if update.message:
-        await update.message.reply_text(
-            "❌ <b>Произошла техническая ошибка</b>\n\n"
-            "Попробуйте:\n"
-            "• Использовать команду /start\n"
-            "• Обратиться к администратору\n"
-            "• Попробовать позже",
-            parse_mode=ParseMode.HTML
-        )
-    elif update.callback_query:
-        try:
-            await update.callback_query.answer("❌ Произошла ошибка")
-            await update.callback_query.edit_message_text(
+    try:
+        logger.error(f"Update {update} caused error {context.error}")
+        
+        if update and update.message:
+            await update.message.reply_text(
                 "❌ <b>Произошла техническая ошибка</b>\n\n"
-                "Используйте /start для перезапуска.",
+                "Попробуйте:\n"
+                "• Использовать команду /start\n"
+                "• Обратиться к администратору\n"
+                "• Попробовать позже",
                 parse_mode=ParseMode.HTML
             )
-        except:
-            pass
-
+        elif update and update.callback_query:
+            try:
+                await update.callback_query.answer("❌ Произошла ошибка")
+                await update.callback_query.edit_message_text(
+                    "❌ <b>Произошла техническая ошибка</b>\n\n"
+                    "Используйте /start для перезапуска.",
+                    parse_mode=ParseMode.HTML
+                )
+            except:
+                pass
+    except Exception as e:
+        print(f"Error in error_handler: {e}")
 # Главная функция
-def main():
+def main() -> None:
     print("🚀 Запуск ULX Ukraine Bot...")
     print(f"📊 Загружено {len(REGIONS)} областей")
     print(f"🏙️ Загружено {sum(len(c) for c in REGIONS.values())} городов")
     print(f"🏷️ Загружено {len(CATEGORIES)} категорий")
     print(f"🔧 Загружено {len(CONDITIONS)} состояний товаров")
-
+    
     # 1) Создаём приложение
-    app = ApplicationBuilder().token(TOKEN).post_init(on_startup).build()
-
+    app = ApplicationBuilder().token(TOKEN).build()
+    
     # 2) Регистрируем хэндлеры
+    conv_handler = ConversationHandler(
+        entry_points=[
+            CommandHandler("start", start_selling),
+            CallbackQueryHandler(start_selling, pattern="^start_sell$"),
+            CommandHandler("sell", start_selling) # Changed from sell_command to start_selling for consistency
+        ],
+        states={
+            CHOOSING_CATEGORY: [
+                CallbackQueryHandler(choose_category, pattern="^category\\|.*$")
+            ],
+            CHOOSING_SUBCATEGORY: [
+                CallbackQueryHandler(choose_subcategory, pattern="^subcategory\\|.*$"),
+                CallbackQueryHandler(manual_subcategory, pattern="^manual_subcategory$"),
+                CallbackQueryHandler(back_to_categories, pattern="^back_to_categories$")
+            ],
+            ADDING_MANUAL_SUBCATEGORY: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, add_manual_subcategory)
+            ],
+            CHOOSING_REGION: [
+                CallbackQueryHandler(choose_region, pattern="^region\\|.*$"),
+                CallbackQueryHandler(back_to_subcategories, pattern="^back_to_subcategories$")
+            ],
+            CHOOSING_CITY: [
+                CallbackQueryHandler(choose_city, pattern="^city\\|.*$"),
+                CallbackQueryHandler(back_to_regions, pattern="^back_to_regions$")
+            ],
+            ADDING_MANUAL_CITY: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, add_manual_city)
+            ],
+            CHOOSING_CONDITION: [
+                CallbackQueryHandler(choose_condition, pattern="^condition\\|.*$"),
+                CallbackQueryHandler(back_to_cities, pattern="^back_to_cities$")
+            ],
+            ADDING_TITLE: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, add_title)
+            ],
+            ADDING_DESCRIPTION: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, add_description)
+            ],
+            ADDING_PRICE: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, add_price)
+            ],
+            ADDING_PHOTOS: [
+                MessageHandler(filters.PHOTO, handle_photos),
+                CallbackQueryHandler(add_photos_handler, pattern="^add_photos$"),
+                CallbackQueryHandler(skip_photos_handler, pattern="^skip_photos$"),
+                CallbackQueryHandler(photos_done_handler, pattern="^photos_done$"),
+                CallbackQueryHandler(remove_last_photo_handler, pattern="^remove_last_photo$")
+            ],
+            CONFIRMING: [
+                CallbackQueryHandler(confirm, pattern="^confirm$"),
+                CallbackQueryHandler(edit_listing, pattern="^edit$"),
+                CallbackQueryHandler(back_to_preview, pattern="^back_to_preview$"),
+                # Add handlers for specific edits if you implement them
+            ]
+        },
+        fallbacks=[
+            CommandHandler("cancel", cancel),
+            CallbackQueryHandler(cancel, pattern="^cancel$"),
+            CommandHandler("start", start), # Allow /start to reset the conversation
+            CallbackQueryHandler(main_menu_handler, pattern="^main_menu$") # Allow main_menu to reset
+        ]
+    )
     app.add_handler(conv_handler)
-    app.add_handler(CommandHandler("start", start))
+    
+    app.add_handler(CommandHandler("start", start)) # This is the initial /start, separate from conv_handler's entry_point
     app.add_handler(CommandHandler("sell", sell_command))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CallbackQueryHandler(help_command,     pattern="^help$"))
     app.add_handler(CallbackQueryHandler(main_menu_handler,pattern="^main_menu$"))
+    # Catch any unhandled callback queries and messages that aren't part of the conversation
     app.add_handler(CallbackQueryHandler(unknown_callback))
     app.add_error_handler(error_handler)
-
-    # 3) Запускаем webhook-сервер
-    print("🔄 Бот работает в режиме webhook…")
-    app.run_webhook(
-        listen="0.0.0.0",
-        port=int(os.environ.get("PORT", 443)),
-        url_path=TOKEN
-    )
-
+    
+    # 3) Запускаем бота локально
+    print("✅ ULX Ukraine Bot запущен локально!")
+    app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
     main()
