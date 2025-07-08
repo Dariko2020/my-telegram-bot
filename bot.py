@@ -7,7 +7,7 @@ from telegram.ext import (
     CallbackQueryHandler, ConversationHandler, filters, ContextTypes
 )
 from telegram.constants import ParseMode
-from telegram.error import TelegramError, BadRequest
+from telegram.error import TelegramError, BadRequest # BadRequest уже импортирован
 from datetime import datetime
 import json
 from typing import Dict, Any, List, Optional
@@ -47,12 +47,12 @@ MAX_PRICE = 1000000
     ADDING_PHOTOS,
     ADDING_PHONE_NUMBER, # Новое состояние для номера телефона
     CONFIRMING,
-    TYPING_MANUAL_SUBCATEGORY, # Эти состояния, вероятно, не используются как отдельные, но оставлены для совместимости
-    TYPING_MANUAL_CITY,       # по map(chr, range())
+    TYPING_MANUAL_SUBCATEGORY,
+    TYPING_MANUAL_CITY,
     TYPING_TITLE,
     TYPING_DESCRIPTION,
     TYPING_PRICE,
-) = map(chr, range(19)) # Убедитесь, что количество символов совпадает с количеством состояний. Увеличено с 17 до 19
+) = map(chr, range(18)) # ИСПРАВЛЕНО: было 19, стало 18, чтобы соответствовать количеству состояний
 
 # Загрузка данных из JSON файлов
 CATEGORIES: Dict[str, Any] = {}
