@@ -121,11 +121,12 @@ async def main_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             [InlineKeyboardButton("❓ Помощь", callback_data="help")],
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        if query.message.text: # If it's not an inline keyboard from /start
+        # Проверяем, есть ли у сообщения текст, чтобы избежать ошибки при редактировании
+        if query.message.text:
              await query.edit_message_text(
                 "🏠 Главное меню. Выберите действие:", reply_markup=reply_markup
             )
-        else: # If it's a message from /start
+        else: # Если нет текста, это может быть медиа или что-то, что нельзя редактировать
             await query.message.reply_text(
                 "🏠 Главное меню. Выберите действие:", reply_markup=reply_markup
             )
@@ -263,12 +264,12 @@ async def prompt_region(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     keyboard = []
     # Проверяем, что REGIONS не пуст
     if not REGIONS:
-        message = "Извините, регионы не загружены. Пожалуйста, проверьте файл regions.json."
+        message_text = "Извините, регионы не загружены. Пожалуйста, проверьте файл regions.json."
         if update.callback_query:
             await update.callback_query.answer()
-            await update.callback_query.edit_message_text(message)
+            await update.callback_query.edit_message_text(message_text)
         else:
-            await update.message.reply_text(message)
+            await update.message.reply_text(message_text)
         return ConversationHandler.END
 
     for region_id, region_data in REGIONS.items():
@@ -276,11 +277,19 @@ async def prompt_region(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     keyboard.append([InlineKeyboardButton("◀️ Назад к подкатегориям", callback_data="back_to_subcategories")])
     reply_markup = InlineKeyboardMarkup(keyboard)
 
-    await (update.callback_query or update.message).reply_text(
-        "<b>Шаг 3 из 9: Выберите регион:</b>",
-        reply_markup=reply_markup,
-        parse_mode=ParseMode.HTML
-    )
+    message_text = "<b>Шаг 3 из 9: Выберите регион:</b>"
+    if update.callback_query:
+        await update.callback_query.edit_message_text(
+            message_text,
+            reply_markup=reply_markup,
+            parse_mode=ParseMode.HTML
+        )
+    elif update.message: # Это путь для manual_subcategory, где мы получили сообщение вместо callback
+        await update.message.reply_text(
+            message_text,
+            reply_markup=reply_markup,
+            parse_mode=ParseMode.HTML
+        )
     return CHOOSING_REGION
 
 async def choose_region(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -340,12 +349,12 @@ async def prompt_condition(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     keyboard = []
     # Проверяем, что CONDITIONS не пуст
     if not CONDITIONS:
-        message = "Извините, состояния товаров не загружены. Пожалуйста, проверьте файл conditions.json."
+        message_text = "Извините, состояния товаров не загружены. Пожалуйста, проверьте файл conditions.json."
         if update.callback_query:
             await update.callback_query.answer()
-            await update.callback_query.edit_message_text(message)
+            await update.callback_query.edit_message_text(message_text)
         else:
-            await update.message.reply_text(message)
+            await update.message.reply_text(message_text)
         return ConversationHandler.END
 
     for condition_id, condition_name in CONDITIONS.items():
@@ -353,11 +362,11 @@ async def prompt_condition(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     keyboard.append([InlineKeyboardButton("◀️ Назад к выбору города", callback_data="back_to_cities")])
     reply_markup = InlineKeyboardMarkup(keyboard)
 
-    message = "<b>Шаг 5 из 9: Выберите состояние товара:</b>"
+    message_text = "<b>Шаг 5 из 9: Выберите состояние товара:</b>"
     if update.callback_query:
-        await update.callback_query.edit_message_text(message, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
-    else: # This path is for manual city, where we got a message instead of callback
-        await update.message.reply_text(message, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+        await update.callback_query.edit_message_text(message_text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+    elif update.message: # This path is for manual city, where we got a message instead of callback
+        await update.message.reply_text(message_text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
     return CHOOSING_CONDITION
 
 async def choose_condition(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -792,18 +801,20 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
     try:
         # Try to send a message back to the user
         if isinstance(update, Update):
-            if update.effective_message:
+            if update.effective_message and update.effective_message.text: # Check if it's a message with text
                 await update.effective_message.reply_text(
                     "❌ Произошла техническая ошибка. Пожалуйста, попробуйте еще раз или используйте /start.",
                     parse_mode=ParseMode.HTML
                 )
-            elif update.callback_query:
+            elif update.callback_query: # This branch is for callback queries
                 await update.callback_query.answer("❌ Произошла ошибка")
-                await update.callback_query.edit_message_text(
+                await update.callback_query.edit_message_text( # Correctly edit the message from the callback query
                     "❌ <b>Произошла техническая ошибка</b>\n\n"
                     "Используйте /start для перезапуска.",
                     parse_mode=ParseMode.HTML
                 )
+            else: # Fallback for other types of updates without specific handling
+                logger.warning("Unhandled update type in error_handler, cannot reply.")
     except Exception as e:
         logger.error(f"Error in error_handler's response: {e}")
 
