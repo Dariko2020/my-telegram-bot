@@ -1,0 +1,152 @@
+{
+    "electronics": {
+        "name": "Электроника",
+        "subcategories": {
+            "phones": "Телефоны и смартфоны",
+            "laptops": "Ноутбуки",
+            "desktops": "Настольные компьютеры",
+            "tablets": "Планшеты и электронные книги",
+            "tv_video": "Телевизоры / Видеотехника",
+            "audio_photo": "Аудиотехника / Фото",
+            "game_consoles": "Игровые приставки",
+            "accessories": "Аксессуары для электроники",
+            "other_electronics": "Прочая электроника"
+        }
+    },
+    "transport": {
+        "name": "Транспорт",
+        "subcategories": {
+            "cars": "Легковые автомобили",
+            "motorcycles": "Мотоциклы",
+            "trucks": "Грузовые автомобили",
+            "buses": "Автобусы",
+            "special_equipment": "Спецтехника",
+            "agricultural_machinery": "Сельхозтехника",
+            "water_transport": "Водный транспорт",
+            "air_transport": "Воздушный транспорт",
+            "parts_accessories_auto": "Запчасти для транспорта"
+        }
+    },
+    "real_estate": {
+        "name": "Недвижимость",
+        "subcategories": {
+            "apartments_sell": "Квартиры: продажа",
+            "apartments_rent": "Квартиры: аренда",
+            "houses_sell": "Дома: продажа",
+            "houses_rent": "Дома: аренда",
+            "land": "Земля",
+            "commercial_property": "Коммерческая недвижимость",
+            "garages_parking": "Гаражи / паркоместа"
+        }
+    },
+    "home_garden": {
+        "name": "Дом и сад",
+        "subcategories": {
+            "furniture": "Мебель",
+            "household_appliances": "Бытовая техника",
+            "interior_decor": "Предметы интерьера",
+            "kitchenware": "Посуда / кухонные принадлежности",
+            "garden_supplies": "Садовые товары",
+            "building_materials": "Стройматериалы / инструменты",
+            "plants": "Растения",
+            "other_home": "Прочее для дома"
+        }
+    },
+    "fashion_style": {
+        "name": "Мода и стиль",
+        "subcategories": {
+            "women_clothing": "Женская одежда",
+            "men_clothing": "Мужская одежда",
+            "shoes": "Обувь",
+            "accessories_fashion": "Аксессуары",
+            "jewelry_watches": "Украшения / часы",
+            "beauty_health": "Красота / здоровье"
+        }
+    },
+    "children_world": {
+        "name": "Детский мир",
+        "subcategories": {
+            "baby_transport": "Детский транспорт",
+            "toys": "Игрушки",
+            "baby_clothes": "Детская одежда",
+            "baby_furniture": "Детская мебель",
+            "feed_care": "Кормление / уход",
+            "other_baby": "Прочее для детей"
+        }
+    },
+    "animals": {
+        "name": "Животные",
+        "subcategories": {
+            "dogs": "Собаки",
+            "cats": "Коты",
+            "birds": "Птицы",
+            "fish": "Рыбки",
+            "rodents": "Грызуны",
+            "farm_animals": "Сельскохозяйственные животные",
+            "animal_accessories": "Товары для животных"
+        }
+    },
+    "work": {
+        "name": "Работа",
+        "subcategories": {
+            "it_telecom": "IT, телеком",
+            "retail_sales": "Розничная торговля / продажи",
+            "marketing_advertising": "Маркетинг / реклама / PR",
+            "management": "Руководящие должности",
+            "production": "Производство / энергетика",
+            "transport_logistics": "Транспорт / логистика",
+            "building_repair": "Строительство / ремонт",
+            "education_science": "Образование / наука",
+            "medicine_pharmacy": "Медицина / фармацевтика",
+            "restaurant_hotel": "Рестораны / гостиницы",
+            "security": "Охрана / безопасность",
+            "beauty_sport": "Красота / спорт",
+            "other_work": "Прочие сферы"
+        }
+    },
+    "services": {
+        "name": "Услуги",
+        "subcategories": {
+            "business_services": "Услуги для бизнеса",
+            "repair_services": "Ремонт / обслуживание техники",
+            "building_repair_services": "Строительство / ремонт",
+            "transport_services": "Транспортные услуги",
+            "education_courses": "Образование / курсы",
+            "beauty_health_services": "Красота / здоровье",
+            "cleaning_services": "Уборка",
+            "legal_services": "Юридические услуги",
+            "financial_services": "Финансовые услуги",
+            "other_services": "Прочие услуги"
+        }
+    },
+    "hobby_sport": {
+        "name": "Хобби, отдых и спорт",
+        "subcategories": {
+            "antiques": "Антиквариат / коллекции",
+            "music_instruments": "Музыкальные инструменты",
+            "books_magazines": "Книги / журналы",
+            "sport_rest": "Спорт / отдых",
+            "travel": "Путешествия",
+            "fishing_hunting": "Рыбалка / охота",
+            "art_craft": "Искусство / ручная работа"
+        }
+    },
+    "for_free": {
+        "name": "Отдам бесплатно",
+        "subcategories": {
+            "free_clothes": "Одежда",
+            "free_home_goods": "Товары для дома",
+            "free_electronics": "Электроника",
+            "free_children_goods": "Детские товары",
+            "free_other": "Прочее"
+        }
+    },
+    "exchange": {
+        "name": "Обмен",
+        "subcategories": {
+            "exchange_property": "Обмен недвижимости",
+            "exchange_auto": "Обмен автомобилей",
+            "exchange_goods": "Обмен товаров"
+        }
+    }
+}

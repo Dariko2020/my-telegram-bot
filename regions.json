@@ -1,0 +1,203 @@
+{
+    "kyiv_obl": {
+        "name": "Киевская область",
+        "cities": {
+            "kyiv": "Киев",
+            "brovary": "Бровары",
+            "boryspil": "Борисполь",
+            "irpin": "Ирпень",
+            "bila_tserkva": "Белая Церковь",
+            "boyarka": "Боярка",
+            "vasylkiv": "Васильков",
+            "vyshhorod": "Вышгород",
+            "fastiv": "Фастов",
+            "obukhiv": "Обухов",
+            "pereiaslav": "Переяслав",
+            "slavutych": "Славутич",
+            "ukrainka": "Украинка"
+        }
+    },
+    "dnipro_obl": {
+        "name": "Днепропетровская область",
+        "cities": {
+            "dnipro": "Днепр",
+            "kryvyi_rih": "Кривой Рог",
+            "kamjanske": "Каменское",
+            "nikopol": "Никополь",
+            "pavlohrad": "Павлоград",
+            "novomoskovsk": "Новомосковск",
+            "zhovti_vody": "Жёлтые Воды",
+            "marganets": "Марганец",
+            "pokrov": "Покров"
+        }
+    },
+    "odesa_obl": {
+        "name": "Одесская область",
+        "cities": {
+            "odesa": "Одесса",
+            "izmail": "Измаил",
+            "chornomorsk": "Черноморск",
+            "bilhorod_dnistrovskyi": "Белгород-Днестровский",
+            "podilsk": "Подольск",
+            "yuzhne": "Южное"
+        }
+    },
+    "kharkiv_obl": {
+        "name": "Харьковская область",
+        "cities": {
+            "kharkiv": "Харьков",
+            "lohvystia": "Лозовая",
+            "kupiansk": "Купянск",
+            "izium": "Изюм",
+            "chuhuiv": "Чугуев",
+            "balakliia": "Балаклея"
+        }
+    },
+    "lviv_obl": {
+        "name": "Львовская область",
+        "cities": {
+            "lviv": "Львов",
+            "chervonohrad": "Червоноград",
+            "stryi": "Стрый",
+            "drohobych": "Дрогобыч",
+            "sambir": "Самбор",
+            "truskavets": "Трускавец"
+        }
+    },
+    "vinnytsia_obl": {
+        "name": "Винницкая область",
+        "cities": {
+            "vinnytsia": "Винница",
+            "zhmerynka": "Жмеринка",
+            "mohyliv_podilskyi": "Могилёв-Подольский"
+        }
+    },
+    "volyn_obl": {
+        "name": "Волынская область",
+        "cities": {
+            "lutsk": "Луцк",
+            "kovel": "Ковель",
+            "volodymyr": "Владимир"
+        }
+    },
+    "zhytomyr_obl": {
+        "name": "Житомирская область",
+        "cities": {
+            "zhytomyr": "Житомир",
+            "berdychiv": "Бердичев",
+            "korosten": "Коростень"
+        }
+    },
+    "zakarpattia_obl": {
+        "name": "Закарпатская область",
+        "cities": {
+            "uzhhorod": "Ужгород",
+            "mukachevo": "Мукачево",
+            "khust": "Хуст"
+        }
+    },
+    "zaporizhzhia_obl": {
+        "name": "Запорожская область",
+        "cities": {
+            "zaporizhzhia": "Запорожье",
+            "melitopol": "Мелитополь",
+            "berdiansk": "Бердянск",
+            "enerhodar": "Энергодар"
+        }
+    },
+    "ivano_frankivsk_obl": {
+        "name": "Ивано-Франковская область",
+        "cities": {
+            "ivano_frankivsk": "Ивано-Франковск",
+            "kolomyia": "Коломыя",
+            "kalush": "Калуш"
+        }
+    },
+    "kropyvnytskyi_obl": {
+        "name": "Кировоградская область",
+        "cities": {
+            "kropyvnytskyi": "Кропивницкий",
+            "oleksandriia": "Александрия",
+            "svitlovodsk": "Светловодск"
+        }
+    },
+    "mykolaiv_obl": {
+        "name": "Николаевская область",
+        "cities": {
+            "mykolaiv": "Николаев",
+            "pervomaisk": "Первомайск",
+            "voznesensk": "Вознесенск"
+        }
+    },
+    "poltava_obl": {
+        "name": "Полтавская область",
+        "cities": {
+            "poltava": "Полтава",
+            "kremenchuk": "Кременчуг",
+            "horishni_plavni": "Горишние Плавни"
+        }
+    },
+    "rivne_obl": {
+        "name": "Ровенская область",
+        "cities": {
+            "rivne": "Ровно",
+            "varash": "Вараш",
+            "dubno": "Дубно"
+        }
+    },
+    "sumy_obl": {
+        "name": "Сумская область",
+        "cities": {
+            "sumy": "Сумы",
+            "konotop": "Конотоп",
+            "shostka": "Шостка"
+        }
+    },
+    "ternopil_obl": {
+        "name": "Тернопольская область",
+        "cities": {
+            "ternopil": "Тернополь",
+            "chortkiv": "Чортков",
+            "kremenets": "Кременец"
+        }
+    },
+    "khmelnytskyi_obl": {
+        "name": "Хмельницкая область",
+        "cities": {
+            "khmelnytskyi": "Хмельницкий",
+            "kamianets_podilskyi": "Каменец-Подольский",
+            "shepetivka": "Шепетовка"
+        }
+    },
+    "cherkasy_obl": {
+        "name": "Черкасская область",
+        "cities": {
+            "cherkasy": "Черкассы",
+            "uman": "Умань",
+            "smila": "Смела"
+        }
+    },
+    "chernivtsi_obl": {
+        "name": "Черновицкая область",
+        "cities": {
+            "chernivtsi": "Черновцы",
+            "storozhynets": "Сторожинец"
+        }
+    },
+    "chernihiv_obl": {
+        "name": "Черниговская область",
+        "cities": {
+            "chernihiv": "Чернигов",
+            "nizhyn": "Нежин",
+            "pryluky": "Прилуки"
+        }
+    },
+    "kherson_obl": {
+        "name": "Херсонская область",
+        "cities": {
+            "kherson": "Херсон",
+            "nova_kakhovka": "Новая Каховка",
+            "kakhovka": "Каховка"
+        }
+    }
+}
