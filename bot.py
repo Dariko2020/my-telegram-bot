@@ -7,7 +7,7 @@ from telegram.ext import (
     CallbackQueryHandler, ConversationHandler, filters, ContextTypes
 )
 from telegram.constants import ParseMode
-from telegram.error import TelegramError
+from telegram.error import TelegramError, BadRequest
 from datetime import datetime
 import json
 from typing import Dict, Any, List, Optional
@@ -580,15 +580,30 @@ async def preview_listing(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             else:
                 media.append(InputMediaPhoto(media=photo_id))
         
+        # Если это callback_query, отправляем новую группу медиа, а затем новый текстовый ответ
         if update.callback_query:
-            await update.callback_query.message.reply_media_group(media=media)
+            # Сначала пытаемся удалить предыдущее сообщение с кнопками, чтобы не было дублирования
+            # Это может вызвать BadRequest, если сообщение уже удалено или не найдено,
+            # но мы не будем об этом беспокоиться, так как это не критично.
+            try:
+                await update.callback_query.message.delete()
+            except BadRequest:
+                pass # Игнорируем ошибку, если сообщение не удалось удалить
+            
+            sent_message = await update.callback_query.message.reply_media_group(media=media)
+            # Сохраняем ID сообщения, которое содержит фото, чтобы его можно было удалить при отмене
+            context.user_data["preview_message_ids"] = [m.message_id for m in sent_message]
+            
+            # Отправляем новое сообщение с кнопками
             await update.callback_query.message.reply_text(
                 "Проверьте объявление и подтвердите публикацию:",
                 reply_markup=reply_markup,
                 parse_mode=ParseMode.HTML
             )
         elif update.message:
-            await update.message.reply_media_group(media=media)
+            sent_message = await update.message.reply_media_group(media=media)
+            context.user_data["preview_message_ids"] = [m.message_id for m in sent_message]
+            
             await update.message.reply_text(
                 "Проверьте объявление и подтвердите публикацию:",
                 reply_markup=reply_markup,
@@ -597,6 +612,7 @@ async def preview_listing(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     else:
         # If no photos, send only text
         if update.callback_query:
+            # Пытаемся отредактировать сообщение callback_query, если оно есть
             await update.callback_query.edit_message_text(
                 preview_text,
                 reply_markup=reply_markup,
@@ -694,7 +710,12 @@ async def confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     ]
     if not all(field in user_data for field in required_fields):
         error_message = "Произошла ошибка: не все данные объявления заполнены. Пожалуйста, начните создание объявления заново командой /sell."
-        await query.edit_message_text(error_message, parse_mode=ParseMode.HTML)
+        # Добавляем try-except для edit_message_text, чтобы не упасть, если сообщение уже изменено/удалено
+        try:
+            await query.edit_message_text(error_message, parse_mode=ParseMode.HTML)
+        except BadRequest as e:
+            logger.warning(f"Failed to edit message in confirm (missing data, probably already edited): {e}")
+            await query.message.reply_text(error_message, parse_mode=ParseMode.HTML)
         return ConversationHandler.END
 
     photos_to_send = user_data.get("photos", [])
@@ -710,12 +731,31 @@ async def confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         pass
 
     try:
+        # Попытаемся удалить предыдущее сообщение с предпросмотром, если оно было
+        preview_message_ids = context.user_data.get("preview_message_ids", [])
+        if preview_message_ids:
+            for msg_id in preview_message_ids:
+                try:
+                    await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=msg_id)
+                except BadRequest as e:
+                    logger.warning(f"Failed to delete preview message {msg_id}: {e}")
+                    # Игнорируем ошибку, если сообщение уже удалено или не существует
+        
+        # Теперь удаляем сообщение с кнопками подтверждения
+        if query.message:
+            try:
+                await query.message.delete()
+            except BadRequest as e:
+                logger.warning(f"Failed to delete confirmation buttons message: {e}")
+                # Игнорируем ошибку, если сообщение уже удалено или не существует
+
         if media:
             await context.bot.send_media_group(chat_id=CHANNEL_ID, media=media)
         else:
             await context.bot.send_message(chat_id=CHANNEL_ID, text=format_listing_message(user_data), parse_mode=ParseMode.HTML)
 
-        await query.edit_message_text(
+        # Отправляем сообщение об успешной публикации
+        await query.message.reply_text( # Используем reply_text, чтобы не было ошибки "Message is not modified"
             "✅ Ваше объявление успешно опубликовано в канале!\n\n"
             "Используйте /start для создания нового объявления или для возврата в главное меню.",
             parse_mode=ParseMode.HTML
@@ -723,10 +763,18 @@ async def confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     except TelegramError as e:
         logger.error(f"Failed to send message to channel: {e}")
         error_msg = f"❌ Произошла ошибка при публикации объявления. Попробуйте позже или свяжитесь с поддержкой.\nОшибка: {e}"
-        await query.edit_message_text(error_msg, parse_mode=ParseMode.HTML)
+        # Отвечаем новым сообщением, чтобы избежать ошибки редактирования
+        if query.message:
+            await query.message.reply_text(error_msg, parse_mode=ParseMode.HTML)
+        else: # Fallback if query.message is somehow unavailable
+            await context.bot.send_message(chat_id=update.effective_chat.id, text=error_msg, parse_mode=ParseMode.HTML)
     except Exception as e:
         logger.error(f"An unexpected error occurred during confirmation: {e}")
-        await query.edit_message_text("❌ Произошла непредвиденная ошибка при публикации объявления.", parse_mode=ParseMode.HTML)
+        # Отвечаем новым сообщением
+        if query.message:
+            await query.message.reply_text("❌ Произошла непредвиденная ошибка при публикации объявления.", parse_mode=ParseMode.HTML)
+        else:
+            await context.bot.send_message(chat_id=update.effective_chat.id, text="❌ Произошла непредвиденная ошибка при публикации объявления.", parse_mode=ParseMode.HTML)
 
     context.user_data.clear() # Clear user data after successful submission
     return ConversationHandler.END
@@ -767,13 +815,43 @@ def format_listing_message(data: Dict[str, Any]) -> str:
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Отменяет текущий процесс создания объявления."""
     query = update.callback_query
+    
+    # Пытаемся удалить сообщение(я) с предпросмотром, если они были
+    preview_message_ids = context.user_data.get("preview_message_ids", [])
+    if preview_message_ids:
+        for msg_id in preview_message_ids:
+            try:
+                await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=msg_id)
+                logger.info(f"Удалено сообщение предпросмотра с ID: {msg_id}")
+            except BadRequest as e:
+                # Игнорируем ошибку, если сообщение уже было удалено или не найдено
+                logger.warning(f"Не удалось удалить сообщение предпросмотра (ID: {msg_id}) при отмене: {e}")
+
+
     if query:
         await query.answer()
-        await query.edit_message_text(
-            "❌ Создание объявления отменено.\n"
-            "Используйте /start для начала нового объявления или возврата в главное меню.",
-            parse_mode=ParseMode.HTML
-        )
+        try:
+            await query.edit_message_text(
+                "❌ Создание объявления отменено.\n"
+                "Используйте /start для начала нового объявления или возврата в главное меню.",
+                parse_mode=ParseMode.HTML
+            )
+        except BadRequest as e:
+            if "Message is not modified" in str(e):
+                logger.info(f"Сообщение уже содержит текст об отмене, нет необходимости редактировать: {e}")
+                # Если сообщение уже такое же, просто отправляем новое, чтобы быть уверенными
+                await query.message.reply_text(
+                    "❌ Создание объявления отменено.\n"
+                    "Используйте /start для начала нового объявления или возврата в главное меню.",
+                    parse_mode=ParseMode.HTML
+                )
+            else:
+                logger.error(f"Ошибка при редактировании сообщения при отмене: {e}")
+                await query.message.reply_text( # Отвечаем новым сообщением
+                    "❌ Создание объявления отменено.\n"
+                    "Используйте /start для начала нового объявления или возврата в главное меню.",
+                    parse_mode=ParseMode.HTML
+                )
     elif update.message:
         await update.message.reply_text(
             "❌ Создание объявления отменено.\n"
@@ -788,7 +866,8 @@ async def unknown_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     query = update.callback_query
     if query:
         await query.answer("Неизвестное действие. Пожалуйста, попробуйте еще раз.")
-        await query.edit_message_text(
+        # Используем reply_text вместо edit_message_text для большей надежности
+        await query.message.reply_text(
             "Произошла ошибка или действие не распознано. "
             "Пожалуйста, используйте кнопки или /start для перезапуска.",
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Начать заново", callback_data="start_sell")]])
@@ -799,22 +878,21 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
     logger.error(f"Exception while handling an update: {context.error}")
 
     try:
-        # Try to send a message back to the user
+        # Проверяем тип ошибки
+        if isinstance(context.error, BadRequest) and "Message is not modified" in str(context.error):
+            logger.info("Caught 'Message is not modified' error, ignoring.")
+            # В этом случае мы ничего не отправляем пользователю, так как для него ничего не поменялось
+            return
+        
+        # Если это другая ошибка или не 'Message is not modified'
         if isinstance(update, Update):
-            if update.effective_message and update.effective_message.text: # Check if it's a message with text
+            if update.effective_message: # Universal way to get the message object
                 await update.effective_message.reply_text(
                     "❌ Произошла техническая ошибка. Пожалуйста, попробуйте еще раз или используйте /start.",
                     parse_mode=ParseMode.HTML
                 )
-            elif update.callback_query: # This branch is for callback queries
-                await update.callback_query.answer("❌ Произошла ошибка")
-                await update.callback_query.edit_message_text( # Correctly edit the message from the callback query
-                    "❌ <b>Произошла техническая ошибка</b>\n\n"
-                    "Используйте /start для перезапуска.",
-                    parse_mode=ParseMode.HTML
-                )
             else: # Fallback for other types of updates without specific handling
-                logger.warning("Unhandled update type in error_handler, cannot reply.")
+                logger.warning("Unhandled update type in error_handler, cannot reply to user.")
     except Exception as e:
         logger.error(f"Error in error_handler's response: {e}")
 
