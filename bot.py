@@ -11,6 +11,7 @@ from telegram.error import TelegramError, BadRequest
 from datetime import datetime
 import json
 from typing import Dict, Any, List, Optional
+import re # Импортируем модуль для регулярных выражений для валидации номера телефона
 
 # Настройка логирования
 logging.basicConfig(
@@ -20,7 +21,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Конфигурация
-TOKEN = os.environ.get("TELEGRAM_TOKEN") # ✅ ИСПОЛЬЗУЕМ ПЕРЕМЕННУЮ ОКРУЖЕНИЯ ДЛЯ ТОКЕНА
+TOKEN = os.environ.get("TELEGRAM_TOKEN")
 CHANNEL_ID = "@ulx_ukraine" # Замените на ID вашего канала
 
 # Ограничения
@@ -44,18 +45,19 @@ MAX_PRICE = 1000000
     ADDING_DESCRIPTION,
     ADDING_PRICE,
     ADDING_PHOTOS,
+    ADDING_PHONE_NUMBER, # Новое состояние для номера телефона
     CONFIRMING,
-    TYPING_MANUAL_SUBCATEGORY,
-    TYPING_MANUAL_CITY,
+    TYPING_MANUAL_SUBCATEGORY, # Эти состояния, вероятно, не используются как отдельные, но оставлены для совместимости
+    TYPING_MANUAL_CITY,       # по map(chr, range())
     TYPING_TITLE,
     TYPING_DESCRIPTION,
     TYPING_PRICE,
-) = map(chr, range(17)) # Убедитесь, что количество символов совпадает с количеством состояний.
+) = map(chr, range(19)) # Убедитесь, что количество символов совпадает с количеством состояний. Увеличено с 17 до 19
 
 # Загрузка данных из JSON файлов
 CATEGORIES: Dict[str, Any] = {}
 REGIONS: Dict[str, Any] = {}
-CONDITIONS: Dict[str, str] = {} # Изменил тип на Dict[str, str] так как conditions.json содержит key-value пары
+CONDITIONS: Dict[str, str] = {}
 
 def load_data_from_json():
     global CATEGORIES, REGIONS, CONDITIONS
@@ -84,14 +86,14 @@ def load_data_from_json():
 
     try:
         with open('conditions.json', 'r', encoding='utf-8') as f:
-            CONDITIONS = json.load(f) # Изменил здесь на json.load(f) без list().values()
+            CONDITIONS = json.load(f)
         logger.info(f"🔧 Загружено {len(CONDITIONS)} состояний товаров из conditions.json")
     except FileNotFoundError:
         logger.error("❌ Файл conditions.json не найден! Убедитесь, что он находится в той же директории, что и bot.py")
     except json.JSONDecodeError as e:
         logger.error(f"❌ Ошибка чтения conditions.json: {e}. Проверьте правильность формата JSON.")
 
-load_data_from_json() # ✅ ВЫЗЫВАЕМ ФУНКЦИЮ ДЛЯ ЗАГРУЗКИ ДАННЫХ
+load_data_from_json()
 
 # Хранение данных для объявлений (в памяти, для прода нужно использовать БД)
 user_data_listings: Dict[int, Dict[str, Any]] = {}
@@ -121,16 +123,15 @@ async def main_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             [InlineKeyboardButton("❓ Помощь", callback_data="help")],
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        # Проверяем, есть ли у сообщения текст, чтобы избежать ошибки при редактировании
         if query.message.text:
              await query.edit_message_text(
                 "🏠 Главное меню. Выберите действие:", reply_markup=reply_markup
             )
-        else: # Если нет текста, это может быть медиа или что-то, что нельзя редактировать
+        else:
             await query.message.reply_text(
                 "🏠 Главное меню. Выберите действие:", reply_markup=reply_markup
             )
-    return ConversationHandler.END # End current conversation if going to main menu
+    return ConversationHandler.END
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Отправляет сообщение с помощью."""
@@ -144,7 +145,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "<b>Как создать объявление:</b>\n"
         "1. Нажмите на '🚀 Создать объявление' или используйте команду /sell.\n"
         "2. Следуйте инструкциям бота, выбирая категорию, регион, город, состояние товара, "
-        "вводя название, описание, цену и загружая фото.\n"
+        "вводя название, описание, цену, загружая фото и опционально указывая номер телефона.\n"
         "3. Подтвердите объявление, и оно будет опубликовано в канале."
     )
     keyboard = [[InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]]
@@ -168,11 +169,11 @@ async def start_selling(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
         "user_id": user_id,
         "username": update.effective_user.username,
         "first_name": update.effective_user.first_name,
-        "last_name": update.effective_user.last_name
+        "last_name": update.effective_user.last_name,
+        "phone_number": None # Инициализируем номер телефона как None
     }
 
     keyboard = []
-    # Проверяем, что CATEGORIES не пуст
     if not CATEGORIES:
         message = "Извините, категории не загружены. Пожалуйста, проверьте файл categories.json."
         if update.callback_query:
@@ -182,13 +183,13 @@ async def start_selling(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
             await update.message.reply_text(message)
         return ConversationHandler.END
 
-    for category_id, category_data in CATEGORIES.items(): # Итерация по данным категории
+    for category_id, category_data in CATEGORIES.items():
         keyboard.append([InlineKeyboardButton(category_data["name"], callback_data=f"category|{category_id}")])
 
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     message = "✅ Отлично! Давайте создадим объявление.\n\n" \
-              "<b>Шаг 1 из 9: Выберите категорию товара:</b>"
+              "<b>Шаг 1 из 10: Выберите категорию товара:</b>" # Изменено количество шагов
     if update.callback_query:
         await update.callback_query.answer()
         await update.callback_query.edit_message_text(message, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
@@ -203,7 +204,7 @@ async def choose_category(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     category_id = query.data.split("|")[1]
     context.user_data["current_listing"] = user_data_listings.get(update.effective_user.id, {})
     context.user_data["current_listing"]["category_id"] = category_id
-    context.user_data["current_listing"]["category_name"] = CATEGORIES.get(category_id, {}).get("name", "Неизвестно") # Изменено
+    context.user_data["current_listing"]["category_name"] = CATEGORIES.get(category_id, {}).get("name", "Неизвестно")
 
     subcategories = CATEGORIES.get(category_id, {}).get("subcategories", {})
     keyboard = []
@@ -214,7 +215,7 @@ async def choose_category(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     await query.edit_message_text(
-        f"<b>Шаг 2 из 9: Выберите подкатегорию для '{CATEGORIES.get(category_id, {}).get('name', 'Неизвестно')}' или введите вручную:</b>", # Изменено
+        f"<b>Шаг 2 из 10: Выберите подкатегорию для '{CATEGORIES.get(category_id, {}).get('name', 'Неизвестно')}' или введите вручную:</b>", # Изменено количество шагов
         reply_markup=reply_markup,
         parse_mode=ParseMode.HTML
     )
@@ -248,10 +249,9 @@ async def choose_subcategory(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     context.user_data["current_listing"] = user_data_listings.get(update.effective_user.id, {})
     
-    # Ensure current_listing is correctly set up if not already
     if "category_id" not in context.user_data["current_listing"]:
         context.user_data["current_listing"]["category_id"] = category_id
-        context.user_data["current_listing"]["category_name"] = CATEGORIES.get(category_id, {}).get("name", "Неизвестно") # Изменено
+        context.user_data["current_listing"]["category_name"] = CATEGORIES.get(category_id, {}).get("name", "Неизвестно")
 
 
     subcategories = CATEGORIES.get(category_id, {}).get("subcategories", {})
@@ -262,7 +262,6 @@ async def choose_subcategory(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 async def prompt_region(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     keyboard = []
-    # Проверяем, что REGIONS не пуст
     if not REGIONS:
         message_text = "Извините, регионы не загружены. Пожалуйста, проверьте файл regions.json."
         if update.callback_query:
@@ -277,14 +276,14 @@ async def prompt_region(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     keyboard.append([InlineKeyboardButton("◀️ Назад к подкатегориям", callback_data="back_to_subcategories")])
     reply_markup = InlineKeyboardMarkup(keyboard)
 
-    message_text = "<b>Шаг 3 из 9: Выберите регион:</b>"
+    message_text = "<b>Шаг 3 из 10: Выберите регион:</b>" # Изменено количество шагов
     if update.callback_query:
         await update.callback_query.edit_message_text(
             message_text,
             reply_markup=reply_markup,
             parse_mode=ParseMode.HTML
         )
-    elif update.message: # Это путь для manual_subcategory, где мы получили сообщение вместо callback
+    elif update.message:
         await update.message.reply_text(
             message_text,
             reply_markup=reply_markup,
@@ -308,7 +307,7 @@ async def choose_region(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     await query.edit_message_text(
-        f"<b>Шаг 4 из 9: Выберите город для '{REGIONS.get(region_id, {}).get('name')}' или введите вручную:</b>",
+        f"<b>Шаг 4 из 10: Выберите город для '{REGIONS.get(region_id, {}).get('name')}' или введите вручную:</b>", # Изменено количество шагов
         reply_markup=reply_markup,
         parse_mode=ParseMode.HTML
     )
@@ -347,7 +346,6 @@ async def choose_city(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
 
 async def prompt_condition(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     keyboard = []
-    # Проверяем, что CONDITIONS не пуст
     if not CONDITIONS:
         message_text = "Извините, состояния товаров не загружены. Пожалуйста, проверьте файл conditions.json."
         if update.callback_query:
@@ -362,10 +360,10 @@ async def prompt_condition(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     keyboard.append([InlineKeyboardButton("◀️ Назад к выбору города", callback_data="back_to_cities")])
     reply_markup = InlineKeyboardMarkup(keyboard)
 
-    message_text = "<b>Шаг 5 из 9: Выберите состояние товара:</b>"
+    message_text = "<b>Шаг 5 из 10: Выберите состояние товара:</b>" # Изменено количество шагов
     if update.callback_query:
         await update.callback_query.edit_message_text(message_text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
-    elif update.message: # This path is for manual city, where we got a message instead of callback
+    elif update.message:
         await update.message.reply_text(message_text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
     return CHOOSING_CONDITION
 
@@ -377,7 +375,7 @@ async def choose_condition(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     context.user_data["current_listing"]["condition_name"] = CONDITIONS.get(condition_id)
 
     await query.edit_message_text(
-        "<b>Шаг 6 из 9: Введите название товара (до 100 символов):</b>\n"
+        "<b>Шаг 6 из 10: Введите название товара (до 100 символов):</b>\n" # Изменено количество шагов
         "(Например: 'Ноутбук HP Pavilion', 'Кроссовки Nike Air Max')",
         parse_mode=ParseMode.HTML
     )
@@ -392,7 +390,7 @@ async def add_title(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         return ADDING_TITLE
     context.user_data["current_listing"]["title"] = title
     await update.message.reply_text(
-        "<b>Шаг 7 из 9: Введите описание товара (до 1000 символов):</b>\n"
+        "<b>Шаг 7 из 10: Введите описание товара (до 1000 символов):</b>\n" # Изменено количество шагов
         "(Например: 'Продаю свой ноутбук, в отличном состоянии, использовался 1 год...', "
         "укажите особенности, комплектацию, дефекты и т.д.)",
         parse_mode=ParseMode.HTML
@@ -408,7 +406,7 @@ async def add_description(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         return ADDING_DESCRIPTION
     context.user_data["current_listing"]["description"] = description
     await update.message.reply_text(
-        "<b>Шаг 8 из 9: Введите цену товара в UAH (например, 1500.50):</b>\n"
+        "<b>Шаг 8 из 10: Введите цену товара в UAH (например, 1500.50):</b>\n" # Изменено количество шагов
         "(Можно указать 'Бесплатно' или 'Обмен'.)",
         parse_mode=ParseMode.HTML
     )
@@ -416,13 +414,13 @@ async def add_description(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 async def add_price(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     price_str = update.message.text.strip().replace(',', '.')
-    context.user_data["current_listing"]["price_raw"] = price_str # Store raw for display
+    context.user_data["current_listing"]["price_raw"] = price_str
     
     price_value = None
     if price_str.lower() == "бесплатно":
         price_value = 0.0
     elif price_str.lower() == "обмен":
-        price_value = -1.0 # Special value for exchange
+        price_value = -1.0
     else:
         try:
             price_value = float(price_str)
@@ -443,7 +441,7 @@ async def add_price(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     await update.message.reply_text(
-        "<b>Шаг 9 из 9: Добавьте фотографии (до 5 шт.) или пропустите:</b>\n"
+        "<b>Шаг 9 из 10: Добавьте фотографии (до 5 шт.) или пропустите:</b>\n" # Изменено количество шагов
         "<i>(Максимальный размер фото: 20 МБ)</i>",
         reply_markup=reply_markup,
         parse_mode=ParseMode.HTML
@@ -458,7 +456,7 @@ async def handle_photos(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
         await update.message.reply_text(f"Вы уже добавили максимальное количество фото ({MAX_PHOTOS}).")
         return ADDING_PHOTOS
     
-    photo_file = update.message.photo[-1] # Get the largest photo version
+    photo_file = update.message.photo[-1]
     if photo_file.file_size > MAX_PHOTO_SIZE:
         await update.message.reply_text(f"Фотография слишком большая (макс. {MAX_PHOTO_SIZE / (1024 * 1024):.0f} МБ). Пожалуйста, загрузите меньшее фото.")
         return ADDING_PHOTOS
@@ -524,18 +522,64 @@ async def remove_last_photo_handler(update: Update, context: ContextTypes.DEFAUL
 async def skip_photos_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
     await query.answer()
-    context.user_data["current_listing"]["photos"] = [] # Ensure it's empty if skipped
-    return await preview_listing(update, context)
+    context.user_data["current_listing"]["photos"] = []
+    return await prompt_phone_number(update, context) # Переход к запросу номера телефона
 
 async def photos_done_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
     await query.answer()
+    return await prompt_phone_number(update, context) # Переход к запросу номера телефона
+
+async def prompt_phone_number(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Запрашивает у пользователя номер телефона."""
+    keyboard = [
+        [InlineKeyboardButton("➡️ Пропустить", callback_data="skip_phone_number")],
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    message_text = "<b>Шаг 10 из 10: Введите ваш номер телефона (необязательно, например, +380XXXXXXXXX):</b>\n" \
+                   "<i>(Этот номер будет виден в объявлении. Вы можете пропустить этот шаг.)</i>"
+    if update.callback_query:
+        await update.callback_query.edit_message_text(
+            message_text,
+            reply_markup=reply_markup,
+            parse_mode=ParseMode.HTML
+        )
+    elif update.message:
+        await update.message.reply_text(
+            message_text,
+            reply_markup=reply_markup,
+            parse_mode=ParseMode.HTML
+        )
+    return ADDING_PHONE_NUMBER
+
+async def add_phone_number(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Обрабатывает введенный номер телефона."""
+    phone_number = update.message.text.strip()
+    # Простая валидация номера телефона (можно улучшить)
+    # Например, только цифры и возможный "+" в начале
+    if re.fullmatch(r"^\+?\d{7,15}$", phone_number):
+        context.user_data["current_listing"]["phone_number"] = phone_number
+        await update.message.reply_text(f"Номер телефона '{phone_number}' добавлен.")
+        return await preview_listing(update, context)
+    else:
+        await update.message.reply_text(
+            "Некорректный формат номера телефона. Пожалуйста, введите номер в формате +380XXXXXXXXX или 0XXXXXXXXX. "
+            "Или нажмите 'Пропустить'."
+        )
+        return ADDING_PHONE_NUMBER
+
+async def skip_phone_number_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Пропускает ввод номера телефона."""
+    query = update.callback_query
+    await query.answer()
+    context.user_data["current_listing"]["phone_number"] = None # Устанавливаем в None, если пропущено
     return await preview_listing(update, context)
+
 
 async def preview_listing(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     user_data = context.user_data.get("current_listing", {})
     
-    # Debugging: check if essential data is missing
     if not all(key in user_data for key in ["category_name", "subcategory_name", "region_name", "city_name", "condition_name", "title", "description", "price_raw"]):
         error_message = "Не удалось сформировать объявление. Отсутствуют некоторые данные. Начните сначала с /sell."
         keyboard = [[InlineKeyboardButton("🔄 Начать заново", callback_data="start_sell")]]
@@ -546,22 +590,25 @@ async def preview_listing(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             await update.message.reply_text(error_message, reply_markup=reply_markup)
         return ConversationHandler.END
 
-
+    # Формируем текст для предпросмотра
     preview_text = f"""
-    ✨ <b>Предварительный просмотр объявления:</b>
+✨ <b>Предварительный просмотр объявления:</b>
     
-    <b>Категория:</b> {user_data.get('category_name')}
-    <b>Подкатегория:</b> {user_data.get('subcategory_name')}
-    <b>Регион:</b> {user_data.get('region_name')}
-    <b>Город:</b> {user_data.get('city_name')}
-    <b>Состояние:</b> {user_data.get('condition_name')}
+<b>Название:</b> {user_data.get('title')}
+<b>Цена:</b> {user_data.get('price_raw')} UAH
     
-    <b>Название:</b> {user_data.get('title')}
-    <b>Описание:</b> {user_data.get('description')}
-    <b>Цена:</b> {user_data.get('price_raw')} UAH
+<b>Описание:</b>
+{user_data.get('description')}
     
-    <b>Фото:</b> {len(user_data.get('photos', []))} шт.
-    """
+<b>Категория:</b> {user_data.get('category_name')} / {user_data.get('subcategory_name')}
+<b>Местоположение:</b> {user_data.get('city_name')}, {user_data.get('region_name')}
+<b>Состояние:</b> {user_data.get('condition_name')}
+    
+<b>Фото:</b> {len(user_data.get('photos', []))} шт.
+"""
+    # Добавляем номер телефона в предпросмотр, если он есть
+    if user_data.get('phone_number'):
+        preview_text += f"\n<b>Номер телефона:</b> {user_data['phone_number']}"
 
     keyboard = [
         [InlineKeyboardButton("✅ Подтвердить и опубликовать", callback_data="confirm")],
@@ -570,31 +617,24 @@ async def preview_listing(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
-    # Send preview with photos if available
     photos_to_send = user_data.get('photos', [])
     if photos_to_send:
         media = []
         for i, photo_id in enumerate(photos_to_send):
-            if i == 0: # First photo can have caption
+            if i == 0:
                 media.append(InputMediaPhoto(media=photo_id, caption=preview_text, parse_mode=ParseMode.HTML))
             else:
                 media.append(InputMediaPhoto(media=photo_id))
         
-        # Если это callback_query, отправляем новую группу медиа, а затем новый текстовый ответ
         if update.callback_query:
-            # Сначала пытаемся удалить предыдущее сообщение с кнопками, чтобы не было дублирования
-            # Это может вызвать BadRequest, если сообщение уже удалено или не найдено,
-            # но мы не будем об этом беспокоиться, так как это не критично.
             try:
                 await update.callback_query.message.delete()
             except BadRequest:
-                pass # Игнорируем ошибку, если сообщение не удалось удалить
+                pass
             
             sent_message = await update.callback_query.message.reply_media_group(media=media)
-            # Сохраняем ID сообщения, которое содержит фото, чтобы его можно было удалить при отмене
             context.user_data["preview_message_ids"] = [m.message_id for m in sent_message]
             
-            # Отправляем новое сообщение с кнопками
             await update.callback_query.message.reply_text(
                 "Проверьте объявление и подтвердите публикацию:",
                 reply_markup=reply_markup,
@@ -610,9 +650,7 @@ async def preview_listing(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 parse_mode=ParseMode.HTML
             )
     else:
-        # If no photos, send only text
         if update.callback_query:
-            # Пытаемся отредактировать сообщение callback_query, если оно есть
             await update.callback_query.edit_message_text(
                 preview_text,
                 reply_markup=reply_markup,
@@ -630,7 +668,6 @@ async def preview_listing(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 async def edit_listing(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
     await query.answer("Функция редактирования пока не реализована. Начните сначала.")
-    # Implement specific edit options if needed
     keyboard = [
         [InlineKeyboardButton("🔄 Начать заново", callback_data="start_sell")],
         [InlineKeyboardButton("◀️ Назад к предварительному просмотру", callback_data="back_to_preview")],
@@ -640,7 +677,7 @@ async def edit_listing(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
         "Функция редактирования не реализована. Вы можете начать объявление заново.",
         reply_markup=reply_markup
     )
-    return CONFIRMING # Stay in CONFIRMING state to allow back to preview
+    return CONFIRMING
 
 async def back_to_categories(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
@@ -661,7 +698,7 @@ async def back_to_subcategories(update: Update, context: ContextTypes.DEFAULT_TY
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     await query.edit_message_text(
-        f"<b>Шаг 2 из 9: Выберите подкатегорию для '{CATEGORIES.get(category_id, {}).get('name', 'Неизвестно')}' или введите вручную:</b>", # Изменено
+        f"<b>Шаг 2 из 10: Выберите подкатегорию для '{CATEGORIES.get(category_id, {}).get('name', 'Неизвестно')}' или введите вручную:</b>", # Изменено количество шагов
         reply_markup=reply_markup,
         parse_mode=ParseMode.HTML
     )
@@ -686,7 +723,7 @@ async def back_to_cities(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     await query.edit_message_text(
-        f"<b>Шаг 4 из 9: Выберите город для '{REGIONS.get(region_id, {}).get('name')}' или введите вручную:</b>",
+        f"<b>Шаг 4 из 10: Выберите город для '{REGIONS.get(region_id, {}).get('name')}' или введите вручную:</b>", # Изменено количество шагов
         reply_markup=reply_markup,
         parse_mode=ParseMode.HTML
     )
@@ -703,14 +740,12 @@ async def confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
     user_data = context.user_data.get("current_listing", {})
 
-    # Проверяем наличие всех необходимых данных перед публикацией
     required_fields = [
         "category_name", "subcategory_name", "region_name", "city_name",
         "condition_name", "title", "description", "price_raw"
     ]
     if not all(field in user_data for field in required_fields):
         error_message = "Произошла ошибка: не все данные объявления заполнены. Пожалуйста, начните создание объявления заново командой /sell."
-        # Добавляем try-except для edit_message_text, чтобы не упасть, если сообщение уже изменено/удалено
         try:
             await query.edit_message_text(error_message, parse_mode=ParseMode.HTML)
         except BadRequest as e:
@@ -727,11 +762,9 @@ async def confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             else:
                 media.append(InputMediaPhoto(media=photo_id))
     else:
-        # If no photos, just send the text message
         pass
 
     try:
-        # Попытаемся удалить предыдущее сообщение с предпросмотром, если оно было
         preview_message_ids = context.user_data.get("preview_message_ids", [])
         if preview_message_ids:
             for msg_id in preview_message_ids:
@@ -739,23 +772,19 @@ async def confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
                     await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=msg_id)
                 except BadRequest as e:
                     logger.warning(f"Failed to delete preview message {msg_id}: {e}")
-                    # Игнорируем ошибку, если сообщение уже удалено или не существует
         
-        # Теперь удаляем сообщение с кнопками подтверждения
         if query.message:
             try:
                 await query.message.delete()
             except BadRequest as e:
                 logger.warning(f"Failed to delete confirmation buttons message: {e}")
-                # Игнорируем ошибку, если сообщение уже удалено или не существует
 
         if media:
             await context.bot.send_media_group(chat_id=CHANNEL_ID, media=media)
         else:
             await context.bot.send_message(chat_id=CHANNEL_ID, text=format_listing_message(user_data), parse_mode=ParseMode.HTML)
 
-        # Отправляем сообщение об успешной публикации
-        await query.message.reply_text( # Используем reply_text, чтобы не было ошибки "Message is not modified"
+        await query.message.reply_text(
             "✅ Ваше объявление успешно опубликовано в канале!\n\n"
             "Используйте /start для создания нового объявления или для возврата в главное меню.",
             parse_mode=ParseMode.HTML
@@ -763,20 +792,18 @@ async def confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     except TelegramError as e:
         logger.error(f"Failed to send message to channel: {e}")
         error_msg = f"❌ Произошла ошибка при публикации объявления. Попробуйте позже или свяжитесь с поддержкой.\nОшибка: {e}"
-        # Отвечаем новым сообщением, чтобы избежать ошибки редактирования
         if query.message:
             await query.message.reply_text(error_msg, parse_mode=ParseMode.HTML)
-        else: # Fallback if query.message is somehow unavailable
+        else:
             await context.bot.send_message(chat_id=update.effective_chat.id, text=error_msg, parse_mode=ParseMode.HTML)
     except Exception as e:
         logger.error(f"An unexpected error occurred during confirmation: {e}")
-        # Отвечаем новым сообщением
         if query.message:
             await query.message.reply_text("❌ Произошла непредвиденная ошибка при публикации объявления.", parse_mode=ParseMode.HTML)
         else:
             await context.bot.send_message(chat_id=update.effective_chat.id, text="❌ Произошла непредвиденная ошибка при публикации объявления.", parse_mode=ParseMode.HTML)
 
-    context.user_data.clear() # Clear user data after successful submission
+    context.user_data.clear()
     return ConversationHandler.END
 
 def format_listing_message(data: Dict[str, Any]) -> str:
@@ -789,9 +816,29 @@ def format_listing_message(data: Dict[str, Any]) -> str:
     else:
         price_display = f"{data.get('price_raw')} UAH"
 
-    username = f"@{data.get('username')}" if data.get('username') else f"{data.get('first_name')} {data.get('last_name') or ''}".strip()
-    if not username: # Fallback if no username and no name
-        username = f"Пользователь ID: {data.get('user_id')}"
+    # Формирование ссылки на продавца
+    seller_contact_info = ""
+    telegram_username = data.get('username')
+    first_name = data.get('first_name')
+    last_name = data.get('last_name')
+    user_id = data.get('user_id')
+
+    if telegram_username:
+        seller_contact_info = f"<b>Продавец:</b> <a href='https://t.me/{telegram_username}'>@{telegram_username}</a>"
+    elif user_id:
+        display_name = f"{first_name or ''} {last_name or ''}".strip()
+        if not display_name:
+            display_name = f"Пользователь (ID: {user_id})"
+        seller_contact_info = f"<b>Продавец:</b> <a href='tg://user?id={user_id}'>{display_name}</a>"
+    else:
+        seller_contact_info = f"<b>Продавец:</b> Неизвестно"
+
+    # Добавление номера телефона, если он есть
+    phone_number_info = ""
+    if data.get('phone_number'):
+        # Форматируем номер, чтобы убрать все, кроме цифр и "+", для ссылки tel:
+        clean_phone = re.sub(r'[^\d+]', '', data['phone_number'])
+        phone_number_info = f"<b>Телефон:</b> <a href='tel:{clean_phone}'>{data['phone_number']}</a>"
 
 
     message = f"""
@@ -808,7 +855,8 @@ def format_listing_message(data: Dict[str, Any]) -> str:
 <b>Состояние:</b> {data.get('condition_name')}
 
 <b>Опубликовано:</b> {datetime.now().strftime('%d.%m.%Y %H:%M')}
-<b>Продавец:</b> {username}
+{seller_contact_info}
+{phone_number_info if phone_number_info else ''}
 """
     return message
 
@@ -816,7 +864,6 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Отменяет текущий процесс создания объявления."""
     query = update.callback_query
     
-    # Пытаемся удалить сообщение(я) с предпросмотром, если они были
     preview_message_ids = context.user_data.get("preview_message_ids", [])
     if preview_message_ids:
         for msg_id in preview_message_ids:
@@ -824,9 +871,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
                 await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=msg_id)
                 logger.info(f"Удалено сообщение предпросмотра с ID: {msg_id}")
             except BadRequest as e:
-                # Игнорируем ошибку, если сообщение уже было удалено или не найдено
                 logger.warning(f"Не удалось удалить сообщение предпросмотра (ID: {msg_id}) при отмене: {e}")
-
 
     if query:
         await query.answer()
@@ -839,7 +884,6 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         except BadRequest as e:
             if "Message is not modified" in str(e):
                 logger.info(f"Сообщение уже содержит текст об отмене, нет необходимости редактировать: {e}")
-                # Если сообщение уже такое же, просто отправляем новое, чтобы быть уверенными
                 await query.message.reply_text(
                     "❌ Создание объявления отменено.\n"
                     "Используйте /start для начала нового объявления или возврата в главное меню.",
@@ -847,7 +891,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
                 )
             else:
                 logger.error(f"Ошибка при редактировании сообщения при отмене: {e}")
-                await query.message.reply_text( # Отвечаем новым сообщением
+                await query.message.reply_text(
                     "❌ Создание объявления отменено.\n"
                     "Используйте /start для начала нового объявления или возврата в главное меню.",
                     parse_mode=ParseMode.HTML
@@ -866,7 +910,6 @@ async def unknown_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     query = update.callback_query
     if query:
         await query.answer("Неизвестное действие. Пожалуйста, попробуйте еще раз.")
-        # Используем reply_text вместо edit_message_text для большей надежности
         await query.message.reply_text(
             "Произошла ошибка или действие не распознано. "
             "Пожалуйста, используйте кнопки или /start для перезапуска.",
@@ -878,44 +921,32 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
     logger.error(f"Exception while handling an update: {context.error}")
 
     try:
-        # Проверяем тип ошибки
         if isinstance(context.error, BadRequest) and "Message is not modified" in str(context.error):
             logger.info("Caught 'Message is not modified' error, ignoring.")
-            # В этом случае мы ничего не отправляем пользователю, так как для него ничего не поменялось
             return
         
-        # Если это другая ошибка или не 'Message is not modified'
         if isinstance(update, Update):
-            if update.effective_message: # Universal way to get the message object
+            if update.effective_message:
                 await update.effective_message.reply_text(
                     "❌ Произошла техническая ошибка. Пожалуйста, попробуйте еще раз или используйте /start.",
                     parse_mode=ParseMode.HTML
                 )
-            else: # Fallback for other types of updates without specific handling
+            else:
                 logger.warning("Unhandled update type in error_handler, cannot reply to user.")
     except Exception as e:
         logger.error(f"Error in error_handler's response: {e}")
 
-
-# Главная функция
 def main() -> None:
     print("🚀 Запуск ULX Ukraine Bot...")
-    # ✅ УДАЛЕНЫ СТАРЫЕ СТРОКИ PRINT, ТАК КАК ЛОГИРОВАНИЕ ПРОИСХОДИТ ПРИ ЗАГРУЗКЕ JSON
 
-    # Отримуємо токен зі змінних оточення Render
     TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
-    # Отримуємо URL сервісу зі змінних оточення Render
     RENDER_EXTERNAL_URL = os.environ.get("RENDER_EXTERNAL_URL")
 
-    # Перевіряємо, чи є токен
     if not TELEGRAM_TOKEN:
         raise ValueError("TELEGRAM_TOKEN environment variable not set.")
 
-    # Створюємо ApplicationBuilder
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
-    # Реєструємо хендлери
-    # conv_handler має бути визначений ВИЩЕ функції main() або в глобальній області видимості
     conv_handler = ConversationHandler(
         entry_points=[
             CommandHandler("start", start_selling),
@@ -940,6 +971,7 @@ def main() -> None:
             ],
             CHOOSING_CITY: [
                 CallbackQueryHandler(choose_city, pattern="^city\\|.*$"),
+                CallbackQueryHandler(manual_city, pattern="^manual_city$"), # Добавлено, если пропустили раньше
                 CallbackQueryHandler(back_to_regions, pattern="^back_to_regions$")
             ],
             ADDING_MANUAL_CITY: [
@@ -965,6 +997,10 @@ def main() -> None:
                 CallbackQueryHandler(photos_done_handler, pattern="^photos_done$"),
                 CallbackQueryHandler(remove_last_photo_handler, pattern="^remove_last_photo$")
             ],
+            ADDING_PHONE_NUMBER: [ # Новое состояние
+                MessageHandler(filters.TEXT & ~filters.COMMAND, add_phone_number),
+                CallbackQueryHandler(skip_phone_number_handler, pattern="^skip_phone_number$")
+            ],
             CONFIRMING: [
                 CallbackQueryHandler(confirm, pattern="^confirm$"),
                 CallbackQueryHandler(edit_listing, pattern="^edit$"),
@@ -988,7 +1024,6 @@ def main() -> None:
     app.add_handler(CallbackQueryHandler(unknown_callback))
     app.add_error_handler(error_handler)
 
-    # Запускаємо бота
     if RENDER_EXTERNAL_URL:
         port = int(os.environ.get("PORT", "8080"))
 
