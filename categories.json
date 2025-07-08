@@ -1,0 +1,16 @@
+{
+    "electronics": {
+        "name": "Электроника",
+        "subcategories": {
+            "phones": "Телефоны",
+            "laptops": "Ноутбуки"
+        }
+    },
+    "clothes": {
+        "name": "Одежда",
+        "subcategories": {
+            "men_clothes": "Мужская одежда",
+            "women_clothes": "Женская одежда"
+        }
+    }
+}
