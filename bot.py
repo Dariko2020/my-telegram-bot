@@ -1,5 +1,5 @@
 import logging
-import os # Импортируем os для работы с переменными окружения
+import os  # Импортируем os для работы с переменными окружения
 import asyncio
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
 from telegram.ext import (
@@ -20,11 +20,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Конфигурация
-# Изменено: TOKEN теперь берется из переменной окружения BOT_TOKEN
-TOKEN = os.environ.get("BOT_TOKEN")
-if not TOKEN:
-    logging.error("BOT_TOKEN environment variable not set. Exiting.")
-    exit(1) # Завершаем работу, если токен не установлен
+# УДАЛЕНО: TOKEN больше не определяется здесь. Он будет браться внутри main()
+# TOKEN = os.environ.get("BOT_TOKEN") # Эту строку убираем отсюда
 
 CHANNEL_ID = "@ulx_ukraine"
 
@@ -275,11 +272,18 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     ]
     
     try:
-        await update.message.reply_text(
-            welcome_text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode=ParseMode.HTML
-        )
+        if update.message: # Проверка на то, что это сообщение, а не колбэк
+            await update.message.reply_text(
+                welcome_text,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode=ParseMode.HTML
+            )
+        elif update.callback_query: # Если это колбэк, редактируем сообщение
+            await update.callback_query.edit_message_text(
+                welcome_text,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode=ParseMode.HTML
+            )
     except TelegramError as e:
         logger.error(f"Ошибка отправки стартового сообщения: {e}")
 
@@ -1188,16 +1192,22 @@ def main() -> None:
     print(f"🏷️ Загружено {len(CATEGORIES)} категорий")
     print(f"🔧 Загружено {len(CONDITIONS)} состояний товаров")
     
-    # 1) Создаём приложение
-    # Используем TOKEN, который уже загружен из переменной окружения
-    app = ApplicationBuilder().token(TOKEN).build() 
+    # 1) Получаем токен из переменной окружения
+    # Это КРИТИЧЕСКИ ВАЖНО для работы на Render.
+    token = os.environ.get("BOT_TOKEN")
+    if not token:
+        logger.error("BOT_TOKEN не найден в переменных окружения. Убедитесь, что вы его установили на Render!")
+        exit(1) # Завершаем работу, если токен не установлен
     
-    # 2) Регистрируем хэндлеры
+    # 2) Создаём приложение
+    app = ApplicationBuilder().token(token).build() 
+    
+    # 3) Регистрируем хэндлеры
     conv_handler = ConversationHandler(
         entry_points=[
             CommandHandler("start", start_selling),
             CallbackQueryHandler(start_selling, pattern="^start_sell$"),
-            CommandHandler("sell", start_selling) # Changed from sell_command to start_selling for consistency
+            CommandHandler("sell", start_selling) 
         ],
         states={
             CHOOSING_CATEGORY: [
@@ -1246,48 +1256,54 @@ def main() -> None:
                 CallbackQueryHandler(confirm, pattern="^confirm$"),
                 CallbackQueryHandler(edit_listing, pattern="^edit$"),
                 CallbackQueryHandler(back_to_preview, pattern="^back_to_preview$"),
-                # Add handlers for specific edits if you implement them
             ]
         },
         fallbacks=[
             CommandHandler("cancel", cancel),
             CallbackQueryHandler(cancel, pattern="^cancel$"),
-            CommandHandler("start", start), # Allow /start to reset the conversation
-            CallbackQueryHandler(main_menu_handler, pattern="^main_menu$") # Allow main_menu to reset
+            CommandHandler("start", start), 
+            CallbackQueryHandler(main_menu_handler, pattern="^main_menu$") 
         ]
     )
-    # Раскомментировано: Теперь conv_handler будет активен!
-    app.add_handler(conv_handler) 
+    app.add_handler(conv_handler)
     
-    app.add_handler(CommandHandler("start", start)) # This is the initial /start, separate from conv_handler's entry_point
+    app.add_handler(CommandHandler("start", start)) 
     app.add_handler(CommandHandler("sell", sell_command))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CallbackQueryHandler(help_command,     pattern="^help$"))
     app.add_handler(CallbackQueryHandler(main_menu_handler,pattern="^main_menu$"))
-    # Catch any unhandled callback queries and messages that aren't part of the conversation
     app.add_handler(CallbackQueryHandler(unknown_callback))
     app.add_error_handler(error_handler)
     
-    # --- Изменено: Настройка запуска бота для Render (Webhooks) ---
-    # Render автоматически предоставляет переменную $RENDER_EXTERNAL_HOSTNAME для URL
-    # и $PORT для порта, на котором нужно слушать
-    WEBHOOK_URL = os.environ.get("RENDER_EXTERNAL_HOSTNAME")
+    # --- Настройка запуска бота для Render (Webhooks) ---
     PORT = int(os.environ.get("PORT", "8080")) # Render предоставит свой порт, по умолчанию 8080
+    
+    # Render предоставляет полный URL через RENDER_EXTERNAL_URL
+    # Мы добавляем токен в конец URL для безопасности (это обычная практика для Telegram вебхуков)
+    WEBHOOK_URL_BASE = os.environ.get("RENDER_EXTERNAL_URL")
+    
+    if WEBHOOK_URL_BASE:
+        full_webhook_url = f"{WEBHOOK_URL_BASE}/{token}"
+        
+        # Устанавливаем вебхук в Telegram
+        # Это очень важный шаг, чтобы Telegram знал, куда отправлять обновления
+        print(f"🌐 Устанавливаю вебхук в Telegram: {full_webhook_url}")
+        # Используем await, так как set_webhook - это асинхронная функция
+        asyncio.run(app.bot.set_webhook(url=full_webhook_url)) 
 
-    if WEBHOOK_URL:
-        # Если мы на Render (или другом хостинге с переменной RENDER_EXTERNAL_HOSTNAME)
-        # Настраиваем вебхук
+        # Запускаем веб-сервер, который будет слушать запросы от Telegram
         app.run_webhook(
             listen="0.0.0.0",
             port=PORT,
-            url_path=TOKEN, # Используем токен как путь для безопасности
-            webhook_url=f"https://{WEBHOOK_URL}/{TOKEN}"
+            url_path=token, # Используем токен как путь для безопасности
+            webhook_url=full_webhook_url
         )
-        print(f"✅ ULX Ukraine Bot запущен с вебхуком: https://{WEBHOOK_URL}/{TOKEN}")
+        print(f"✅ ULX Ukraine Bot запущен с вебхуком на {full_webhook_url}")
     else:
-        # Если переменной нет (например, при локальном запуске), используем polling
-        print("✅ ULX Ukraine Bot запущен локально (polling)!")
+        # Если переменной RENDER_EXTERNAL_URL нет (например, при локальном запуске), используем polling
+        print("✅ ULX Ukraine Bot запущен локально (polling)! Для Render установите RENDER_EXTERNAL_URL.")
         app.run_polling(allowed_updates=Update.ALL_TYPES)
 
+# Это должно быть в самом конце файла
 if __name__ == "__main__":
     main()
