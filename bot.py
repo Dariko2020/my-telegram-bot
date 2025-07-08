@@ -20,8 +20,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Конфигурация
-# Цей рядок раніше містив захардкожений токен і був видалений.
-# Токен тепер береться зі змінних оточення Render.
+TOKEN = os.environ.get("TELEGRAM_TOKEN") # ✅ ИСПОЛЬЗУЕМ ПЕРЕМЕННУЮ ОКРУЖЕНИЯ ДЛЯ ТОКЕНА
 CHANNEL_ID = "@ulx_ukraine" # Замените на ID вашего канала
 
 # Ограничения
@@ -46,36 +45,53 @@ MAX_PRICE = 1000000
     ADDING_PRICE,
     ADDING_PHOTOS,
     CONFIRMING,
-    TYPING_MANUAL_SUBCATEGORY, # Добавьте этот, если он используется в вашем ConversationHandler
-    TYPING_MANUAL_CITY, # Добавьте этот, если он используется в вашем ConversationHandler
-    TYPING_TITLE, # Добавьте этот, если он используется
-    TYPING_DESCRIPTION, # Добавьте этот, если он используется
-    TYPING_PRICE, # Добавьте этот, если он используется
+    TYPING_MANUAL_SUBCATEGORY,
+    TYPING_MANUAL_CITY,
+    TYPING_TITLE,
+    TYPING_DESCRIPTION,
+    TYPING_PRICE,
 ) = map(chr, range(17)) # Убедитесь, что количество символов совпадает с количеством состояний.
-                       # Я добавил несколько общих, если у вас были свои.
-                       # Возможно, вам нужно будет скорректировать это.
 
-# Загрузка данных
-try:
-    with open("categories.json", "r", encoding="utf-8") as f:
-        CATEGORIES = json.load(f)
-except FileNotFoundError:
-    CATEGORIES = {}
-    logger.error("categories.json not found. Please create it.")
+# Загрузка данных из JSON файлов
+CATEGORIES: Dict[str, Any] = {}
+REGIONS: Dict[str, Any] = {}
+CONDITIONS: Dict[str, str] = {} # Изменил тип на Dict[str, str] так как conditions.json содержит key-value пары
 
-try:
-    with open("regions.json", "r", encoding="utf-8") as f:
-        REGIONS = json.load(f)
-except FileNotFoundError:
-    REGIONS = {}
-    logger.error("regions.json not found. Please create it.")
+def load_data_from_json():
+    global CATEGORIES, REGIONS, CONDITIONS
+    try:
+        with open('categories.json', 'r', encoding='utf-8') as f:
+            CATEGORIES = json.load(f)
+        logger.info(f"🏷️ Загружено {len(CATEGORIES)} категорий из categories.json")
+    except FileNotFoundError:
+        logger.error("❌ Файл categories.json не найден! Убедитесь, что он находится в той же директории, что и bot.py")
+    except json.JSONDecodeError as e:
+        logger.error(f"❌ Ошибка чтения categories.json: {e}. Проверьте правильность формата JSON.")
 
-try:
-    with open("conditions.json", "r", encoding="utf-8") as f:
-        CONDITIONS = json.load(f)
-except FileNotFoundError:
-    CONDITIONS = {}
-    logger.error("conditions.json not found. Please create it.")
+    try:
+        with open('regions.json', 'r', encoding='utf-8') as f:
+            REGIONS = json.load(f)
+        logger.info(f"📊 Загружено {len(REGIONS)} областей из regions.json")
+        cities_count = 0
+        for region_data in REGIONS.values():
+            if "cities" in region_data:
+                cities_count += len(region_data["cities"])
+        logger.info(f"🏙️ Загружено {cities_count} городов из regions.json")
+    except FileNotFoundError:
+        logger.error("❌ Файл regions.json не найден! Убедитесь, что он находится в той же директории, что и bot.py")
+    except json.JSONDecodeError as e:
+        logger.error(f"❌ Ошибка чтения regions.json: {e}. Проверьте правильность формата JSON.")
+
+    try:
+        with open('conditions.json', 'r', encoding='utf-8') as f:
+            CONDITIONS = json.load(f) # Изменил здесь на json.load(f) без list().values()
+        logger.info(f"🔧 Загружено {len(CONDITIONS)} состояний товаров из conditions.json")
+    except FileNotFoundError:
+        logger.error("❌ Файл conditions.json не найден! Убедитесь, что он находится в той же директории, что и bot.py")
+    except json.JSONDecodeError as e:
+        logger.error(f"❌ Ошибка чтения conditions.json: {e}. Проверьте правильность формата JSON.")
+
+load_data_from_json() # ✅ ВЫЗЫВАЕМ ФУНКЦИЮ ДЛЯ ЗАГРУЗКИ ДАННЫХ
 
 # Хранение данных для объявлений (в памяти, для прода нужно использовать БД)
 user_data_listings: Dict[int, Dict[str, Any]] = {}
@@ -155,8 +171,18 @@ async def start_selling(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     }
 
     keyboard = []
-    for category_id, category_name in CATEGORIES.items():
-        keyboard.append([InlineKeyboardButton(category_name, callback_data=f"category|{category_id}")])
+    # Проверяем, что CATEGORIES не пуст
+    if not CATEGORIES:
+        message = "Извините, категории не загружены. Пожалуйста, проверьте файл categories.json."
+        if update.callback_query:
+            await update.callback_query.answer()
+            await update.callback_query.edit_message_text(message)
+        else:
+            await update.message.reply_text(message)
+        return ConversationHandler.END
+
+    for category_id, category_data in CATEGORIES.items(): # Итерация по данным категории
+        keyboard.append([InlineKeyboardButton(category_data["name"], callback_data=f"category|{category_id}")])
 
     reply_markup = InlineKeyboardMarkup(keyboard)
 
@@ -176,7 +202,7 @@ async def choose_category(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     category_id = query.data.split("|")[1]
     context.user_data["current_listing"] = user_data_listings.get(update.effective_user.id, {})
     context.user_data["current_listing"]["category_id"] = category_id
-    context.user_data["current_listing"]["category_name"] = CATEGORIES.get(category_id)
+    context.user_data["current_listing"]["category_name"] = CATEGORIES.get(category_id, {}).get("name", "Неизвестно") # Изменено
 
     subcategories = CATEGORIES.get(category_id, {}).get("subcategories", {})
     keyboard = []
@@ -187,7 +213,7 @@ async def choose_category(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     await query.edit_message_text(
-        f"<b>Шаг 2 из 9: Выберите подкатегорию для '{CATEGORIES.get(category_id)}' или введите вручную:</b>",
+        f"<b>Шаг 2 из 9: Выберите подкатегорию для '{CATEGORIES.get(category_id, {}).get('name', 'Неизвестно')}' или введите вручную:</b>", # Изменено
         reply_markup=reply_markup,
         parse_mode=ParseMode.HTML
     )
@@ -224,7 +250,7 @@ async def choose_subcategory(update: Update, context: ContextTypes.DEFAULT_TYPE)
     # Ensure current_listing is correctly set up if not already
     if "category_id" not in context.user_data["current_listing"]:
         context.user_data["current_listing"]["category_id"] = category_id
-        context.user_data["current_listing"]["category_name"] = CATEGORIES.get(category_id, "Неизвестно")
+        context.user_data["current_listing"]["category_name"] = CATEGORIES.get(category_id, {}).get("name", "Неизвестно") # Изменено
 
 
     subcategories = CATEGORIES.get(category_id, {}).get("subcategories", {})
@@ -235,6 +261,16 @@ async def choose_subcategory(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 async def prompt_region(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     keyboard = []
+    # Проверяем, что REGIONS не пуст
+    if not REGIONS:
+        message = "Извините, регионы не загружены. Пожалуйста, проверьте файл regions.json."
+        if update.callback_query:
+            await update.callback_query.answer()
+            await update.callback_query.edit_message_text(message)
+        else:
+            await update.message.reply_text(message)
+        return ConversationHandler.END
+
     for region_id, region_data in REGIONS.items():
         keyboard.append([InlineKeyboardButton(region_data["name"], callback_data=f"region|{region_id}")])
     keyboard.append([InlineKeyboardButton("◀️ Назад к подкатегориям", callback_data="back_to_subcategories")])
@@ -302,6 +338,16 @@ async def choose_city(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
 
 async def prompt_condition(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     keyboard = []
+    # Проверяем, что CONDITIONS не пуст
+    if not CONDITIONS:
+        message = "Извините, состояния товаров не загружены. Пожалуйста, проверьте файл conditions.json."
+        if update.callback_query:
+            await update.callback_query.answer()
+            await update.callback_query.edit_message_text(message)
+        else:
+            await update.message.reply_text(message)
+        return ConversationHandler.END
+
     for condition_id, condition_name in CONDITIONS.items():
         keyboard.append([InlineKeyboardButton(condition_name, callback_data=f"condition|{condition_id}")])
     keyboard.append([InlineKeyboardButton("◀️ Назад к выбору города", callback_data="back_to_cities")])
@@ -590,7 +636,7 @@ async def back_to_subcategories(update: Update, context: ContextTypes.DEFAULT_TY
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     await query.edit_message_text(
-        f"<b>Шаг 2 из 9: Выберите подкатегорию для '{CATEGORIES.get(category_id)}' или введите вручную:</b>",
+        f"<b>Шаг 2 из 9: Выберите подкатегорию для '{CATEGORIES.get(category_id, {}).get('name', 'Неизвестно')}' или введите вручную:</b>", # Изменено
         reply_markup=reply_markup,
         parse_mode=ParseMode.HTML
     )
@@ -765,10 +811,7 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
 # Главная функция
 def main() -> None:
     print("🚀 Запуск ULX Ukraine Bot...")
-    print(f"📊 Загружено {len(REGIONS)} областей")
-    print(f"🏙️ Загружено {sum(len(c) for c in REGIONS.values())} городов")
-    print(f"🏷️ Загружено {len(CATEGORIES)} категорий")
-    print(f"🔧 Загружено {len(CONDITIONS)} состояний товаров")
+    # ✅ УДАЛЕНЫ СТАРЫЕ СТРОКИ PRINT, ТАК КАК ЛОГИРОВАНИЕ ПРОИСХОДИТ ПРИ ЗАГРУЗКЕ JSON
 
     # Отримуємо токен зі змінних оточення Render
     TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
