@@ -1,5 +1,5 @@
 import logging
-import os
+import os # Импортируем os для работы с переменными окружения
 import asyncio
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
 from telegram.ext import (
@@ -20,7 +20,12 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Конфигурация
-TOKEN = "8112684210:AAH1eo9dbi5_6SUdbBpLAacBl99aaMoN758"
+# Изменено: TOKEN теперь берется из переменной окружения BOT_TOKEN
+TOKEN = os.environ.get("BOT_TOKEN")
+if not TOKEN:
+    logging.error("BOT_TOKEN environment variable not set. Exiting.")
+    exit(1) # Завершаем работу, если токен не установлен
+
 CHANNEL_ID = "@ulx_ukraine"
 
 # Ограничения
@@ -1174,6 +1179,7 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 pass
     except Exception as e:
         print(f"Error in error_handler: {e}")
+
 # Главная функция
 def main() -> None:
     print("🚀 Запуск ULX Ukraine Bot...")
@@ -1183,7 +1189,8 @@ def main() -> None:
     print(f"🔧 Загружено {len(CONDITIONS)} состояний товаров")
     
     # 1) Создаём приложение
-    app = ApplicationBuilder().token(TOKEN).build()
+    # Используем TOKEN, который уже загружен из переменной окружения
+    app = ApplicationBuilder().token(TOKEN).build() 
     
     # 2) Регистрируем хэндлеры
     conv_handler = ConversationHandler(
@@ -1249,7 +1256,8 @@ def main() -> None:
             CallbackQueryHandler(main_menu_handler, pattern="^main_menu$") # Allow main_menu to reset
         ]
     )
-    app.add_handler(conv_handler)
+    # Раскомментировано: Теперь conv_handler будет активен!
+    app.add_handler(conv_handler) 
     
     app.add_handler(CommandHandler("start", start)) # This is the initial /start, separate from conv_handler's entry_point
     app.add_handler(CommandHandler("sell", sell_command))
@@ -1260,9 +1268,26 @@ def main() -> None:
     app.add_handler(CallbackQueryHandler(unknown_callback))
     app.add_error_handler(error_handler)
     
-    # 3) Запускаем бота локально
-    print("✅ ULX Ukraine Bot запущен локально!")
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
+    # --- Изменено: Настройка запуска бота для Render (Webhooks) ---
+    # Render автоматически предоставляет переменную $RENDER_EXTERNAL_HOSTNAME для URL
+    # и $PORT для порта, на котором нужно слушать
+    WEBHOOK_URL = os.environ.get("RENDER_EXTERNAL_HOSTNAME")
+    PORT = int(os.environ.get("PORT", "8080")) # Render предоставит свой порт, по умолчанию 8080
+
+    if WEBHOOK_URL:
+        # Если мы на Render (или другом хостинге с переменной RENDER_EXTERNAL_HOSTNAME)
+        # Настраиваем вебхук
+        app.run_webhook(
+            listen="0.0.0.0",
+            port=PORT,
+            url_path=TOKEN, # Используем токен как путь для безопасности
+            webhook_url=f"https://{WEBHOOK_URL}/{TOKEN}"
+        )
+        print(f"✅ ULX Ukraine Bot запущен с вебхуком: https://{WEBHOOK_URL}/{TOKEN}")
+    else:
+        # Если переменной нет (например, при локальном запуске), используем polling
+        print("✅ ULX Ukraine Bot запущен локально (polling)!")
+        app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
     main()
